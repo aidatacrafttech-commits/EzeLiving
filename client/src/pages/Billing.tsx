@@ -1,9 +1,9 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Banknote, Camera, CheckCircle2, CreditCard, Package, PauseCircle, ScanLine, ShoppingCart, Smartphone, Tag, TriangleAlert, X } from "lucide-react";
 import { api, apiErrorMessage } from "../api/client";
 import { useCart } from "../context/CartContext";
-import { ScanInput } from "../components/ScanInput";
+import { ScanInput, type ScanInputHandle } from "../components/ScanInput";
 import { CameraScanner } from "../components/CameraScanner";
 import { ProductLookupCard } from "../components/ProductLookupCard";
 import { CartTable } from "../components/CartTable";
@@ -39,6 +39,7 @@ export function Billing() {
   const navigate = useNavigate();
   const cart = useCart();
 
+  const scanInputRef = useRef<ScanInputHandle>(null);
   const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
   const [scannedProduct, setScannedProduct] = useState<Product | null>(null);
   const [lookupError, setLookupError] = useState<string | null>(null);
@@ -113,6 +114,10 @@ export function Billing() {
     const billingStock = scannedProduct.stockByWarehouse?.find((s) => s.warehouseId === cart.warehouseId);
     cart.addItem(scannedProduct, scannedProduct.barcode, billingStock?.quantity ?? 0);
     setScannedProduct(null);
+    // Clicking "Add to cart" moves focus onto that button — pull it back
+    // onto the scan box so the very next barcode scan lands somewhere
+    // instead of being typed into nothing.
+    scanInputRef.current?.focus();
   }
 
   async function createNewCustomer(): Promise<Customer> {
@@ -265,7 +270,7 @@ export function Billing() {
           </label>
         </div>
 
-        <ScanInput onScan={handleScan} />
+        <ScanInput ref={scanInputRef} onScan={handleScan} />
 
         <button type="button" className="link-button" onClick={() => setShowCamera((v) => !v)}>
           <Camera size={13} /> {showCamera ? "Hide camera scanner" : "Use phone camera instead"}
