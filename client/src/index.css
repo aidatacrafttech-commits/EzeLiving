@@ -1472,8 +1472,22 @@ tr.current-warehouse:hover {
 .new-customer-form,
 .customer-picker > input {
   display: flex;
+  flex-wrap: wrap;
   gap: 8px;
   margin-top: 8px;
+}
+
+/* Name/Phone/Email inputs share the row while there's room, but wrap onto
+   their own line instead of overflowing the (fairly narrow) cart sidebar —
+   min-width: 0 lets a flex item actually shrink below its content size,
+   which is what was letting "Email" get clipped instead of wrapping. */
+.new-customer-form input {
+  flex: 1 1 120px;
+  min-width: 0;
+}
+
+.new-customer-form button {
+  flex: 0 0 auto;
 }
 
 .customer-results {
@@ -2207,3 +2221,52 @@ button.link-button.danger-link:hover {
 .inline-link:hover {
   text-decoration: underline;
 }
+
+/* ============ Barcode Generator ============ */
+.barcode-gen-list {
+  max-height: 320px;
+  overflow-y: auto;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-sm);
+  margin-top: 10px;
+}
+
+.barcode-gen-row {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border-soft);
+}
+
+.barcode-gen-row:last-child {
+  border-bottom: none;
+}
+
+.barcode-gen-row-info {
+  min-width: 0;
+}
+
+.barcode-gen-row-name {
+  font-weight: 600;
+  font-size: 13.5px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.barcode-gen-row-meta {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.barcode-gen-copies {
+  width: 60px;
+}
+
+/* Barcode label print styles now live inline inside the isolated popup
+   window BarcodeLabelPrint.tsx opens for printing (see LABEL_STYLES there)
+   — printing in place, even hidden via CSS, left this page's own (tall)
+   layout still occupying document height, which paginated into dozens of
+   blank labels. Nothing print-related belongs in this stylesheet anymore. */

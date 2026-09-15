@@ -13,6 +13,7 @@ import userRoutes from "./users.routes";
 import auditLogRoutes from "./auditLogs.routes";
 import couponRoutes from "./coupons.routes";
 import holdInvoiceRoutes from "./holdInvoices.routes";
+import generatedBarcodeRoutes from "./generatedBarcodes.routes";
 
 const router = Router();
 
@@ -30,5 +31,6 @@ router.use("/users", userRoutes);
 router.use("/audit-logs", auditLogRoutes);
 router.use("/coupons", couponRoutes);
 router.use("/hold-invoices", holdInvoiceRoutes);
+router.use("/barcodes", generatedBarcodeRoutes);
 
 export default router;
