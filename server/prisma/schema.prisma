@@ -31,6 +31,7 @@ model User {
   supplierReturns    SupplierReturn[] @relation("SupplierReturnCreatedBy")
   holdInvoices       HoldInvoice[]    @relation("HoldInvoiceCreatedBy")
   auditLogs          AuditLog[]
+  generatedBarcodes  GeneratedBarcode[] @relation("GeneratedBarcodeCreatedBy")
 
   @@map("users")
 }
@@ -83,6 +84,7 @@ model Product {
   supplierReturnItems SupplierReturnItem[]
   stockTransfers      StockTransfer[]
   holdInvoiceItems    HoldInvoiceItem[]
+  generatedBarcode    GeneratedBarcode?
 
   @@index([barcode])
   @@map("products")
@@ -194,6 +196,34 @@ model DocumentCounter {
 
   @@id([documentType, year])
   @@map("document_counters")
+}
+
+enum GeneratedBarcodeStatus {
+  unused
+  assigned
+}
+
+// A "label-first" pool: numbers minted (and printed) before any product
+// exists, so a physical label can go straight onto stock ahead of the data
+// entry. Each row starts "unused"; when a product is later created with a
+// barcode that matches one of these, createProduct flips it to "assigned"
+// and links it — see products.controller.ts. A barcode never has to come
+// from this pool (a manufacturer's own barcode is just scanned in as
+// before), it's purely for numbers *we* mint ourselves.
+model GeneratedBarcode {
+  id                Int                    @id @default(autoincrement())
+  code              String                 @unique
+  status            GeneratedBarcodeStatus @default(unused)
+  createdById       Int?                   @map("created_by_id")
+  createdAt         DateTime               @default(now()) @map("created_at")
+  assignedProductId Int?                   @unique @map("assigned_product_id")
+  assignedAt        DateTime?              @map("assigned_at")
+
+  createdBy       User?    @relation("GeneratedBarcodeCreatedBy", fields: [createdById], references: [id])
+  assignedProduct Product? @relation(fields: [assignedProductId], references: [id])
+
+  @@index([status])
+  @@map("generated_barcodes")
 }
 
 model Coupon {

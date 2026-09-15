@@ -10,15 +10,19 @@ import {
   Package,
   PackagePlus,
   Plus,
+  Printer,
   RotateCcw,
+  ScanBarcode,
+  Tags,
   TriangleAlert,
   X,
 } from "lucide-react";
 import { api, apiErrorMessage } from "../api/client";
 import { ProductImageInput } from "../components/ProductImageInput";
 import { BulkImportPanel } from "../components/BulkImportPanel";
+import { BarcodeLabelPrint, type BarcodeLabelEntry } from "../components/BarcodeLabelPrint";
 import type { MappedImportRow } from "../utils/bulkImport";
-import type { Product, StockByWarehouse, Warehouse } from "../types";
+import type { GeneratedBarcode, Product, StockByWarehouse, Warehouse } from "../types";
 
 const emptyForm = {
   name: "",
@@ -105,6 +109,31 @@ export function AdminProducts() {
   const [statusChangingId, setStatusChangingId] = useState<number | null>(null);
   const [confirmingDeactivateId, setConfirmingDeactivateId] = useState<number | null>(null);
   const [statusError, setStatusError] = useState<string | null>(null);
+
+  const [showBarcodeGen, setShowBarcodeGen] = useState(false);
+  const [barcodeGenSearch, setBarcodeGenSearch] = useState("");
+  // productId -> how many copies of that label to print. Presence in this
+  // map is what "selected" means — no separate selected-ids set to keep in
+  // sync with it.
+  const [barcodeGenCopies, setBarcodeGenCopies] = useState<Record<number, number>>({});
+  const [barcodeGenShowName, setBarcodeGenShowName] = useState(true);
+  const [barcodeGenShowMrp, setBarcodeGenShowMrp] = useState(true);
+
+  // Shared by both barcode-printing flows below (reprint an existing
+  // product's barcode, or mint brand-new pool codes) — whichever one is
+  // used last fills this and the actual <BarcodeLabelPrint /> render at the
+  // bottom of the page picks it up.
+  const [printEntries, setPrintEntries] = useState<BarcodeLabelEntry[]>([]);
+
+  // "Generate New Barcodes" — mints brand-new codes via the pool (see
+  // GeneratedBarcode on the backend) before any product exists, so a label
+  // can be printed and stuck on stock ahead of the data entry.
+  const [showNewBarcodeGen, setShowNewBarcodeGen] = useState(false);
+  const [newBarcodeCount, setNewBarcodeCount] = useState("10");
+  const [newBarcodeGenerating, setNewBarcodeGenerating] = useState(false);
+  const [newBarcodeError, setNewBarcodeError] = useState<string | null>(null);
+  const [unusedBarcodes, setUnusedBarcodes] = useState<GeneratedBarcode[]>([]);
+  const [unusedBarcodesLoaded, setUnusedBarcodesLoaded] = useState(false);
 
   async function loadProducts(includeInactive = showInactive) {
     const res = await api.get<Product[]>("/products", { params: includeInactive ? { includeInactive: "true" } : {} });
@@ -408,6 +437,75 @@ export function AdminProducts() {
     }
   }
 
+  const barcodeGenFiltered = (() => {
+    const q = barcodeGenSearch.trim().toLowerCase();
+    if (!q) return products;
+    return products.filter(
+      (p) => p.name.toLowerCase().includes(q) || p.sku.toLowerCase().includes(q) || p.barcode.toLowerCase().includes(q)
+    );
+  })();
+  const barcodeGenSelectedCount = Object.keys(barcodeGenCopies).length;
+  const barcodeGenTotalLabels = Object.values(barcodeGenCopies).reduce((sum, n) => sum + (Number(n) || 0), 0);
+
+  function toggleBarcodeGenSelected(id: number) {
+    setBarcodeGenCopies((prev) => {
+      const next = { ...prev };
+      if (id in next) delete next[id];
+      else next[id] = 1;
+      return next;
+    });
+  }
+
+  function setBarcodeGenCopiesFor(id: number, value: number) {
+    setBarcodeGenCopies((prev) => ({ ...prev, [id]: Math.max(1, Math.floor(value) || 1) }));
+  }
+
+  function generateBarcodeLabels() {
+    const entries: BarcodeLabelEntry[] = Object.entries(barcodeGenCopies)
+      .map(([idStr, copies]): BarcodeLabelEntry | null => {
+        const product = products.find((p) => p.id === Number(idStr));
+        if (!product) return null;
+        return {
+          code: product.barcode,
+          copies,
+          name: barcodeGenShowName ? product.name : undefined,
+          mrp: barcodeGenShowMrp ? Number(product.mrp) : undefined,
+        };
+      })
+      .filter((entry): entry is BarcodeLabelEntry => entry !== null);
+    if (entries.length === 0) return;
+    setPrintEntries(entries);
+  }
+
+  async function loadUnusedBarcodes() {
+    const res = await api.get<GeneratedBarcode[]>("/barcodes", { params: { status: "unused" } });
+    setUnusedBarcodes(res.data);
+    setUnusedBarcodesLoaded(true);
+  }
+
+  async function generateNewBarcodes() {
+    const count = Math.floor(Number(newBarcodeCount));
+    if (!count || count < 1) {
+      setNewBarcodeError("Enter how many new barcodes you need.");
+      return;
+    }
+    if (count > 500) {
+      setNewBarcodeError("Generate at most 500 at a time.");
+      return;
+    }
+    setNewBarcodeError(null);
+    setNewBarcodeGenerating(true);
+    try {
+      const res = await api.post<{ codes: string[] }>("/barcodes/generate", { count });
+      setPrintEntries(res.data.codes.map((code) => ({ code, copies: 1 })));
+      loadUnusedBarcodes();
+    } catch (err) {
+      setNewBarcodeError(apiErrorMessage(err));
+    } finally {
+      setNewBarcodeGenerating(false);
+    }
+  }
+
   async function toggleStock(productId: number) {
     if (expandedProductId === productId) {
       setExpandedProductId(null);
@@ -430,6 +528,86 @@ export function AdminProducts() {
       <h2>
         <Package size={19} /> Products
       </h2>
+
+      <div className="admin-form">
+        <div className="section-header">
+          <h3 style={{ marginBottom: 0 }}>
+            <Tags size={16} /> Generate New Barcodes
+          </h3>
+          <button
+            type="button"
+            className="link-button"
+            onClick={() => {
+              const next = !showNewBarcodeGen;
+              setShowNewBarcodeGen(next);
+              if (next && !unusedBarcodesLoaded) loadUnusedBarcodes();
+            }}
+          >
+            {showNewBarcodeGen ? "Hide" : "Mint labels before adding products"}
+          </button>
+        </div>
+
+        {showNewBarcodeGen && (
+          <>
+            <p className="help-text">
+              Mint brand-new, guaranteed-unique barcode numbers before any product exists — print the labels, stick
+              them on the stock, then use the same number as the <strong>Barcode</strong> when you add the product
+              below. Each label carries the <strong>Eze Living</strong> brand in the corner.
+            </p>
+
+            <div className="form-grid">
+              <label>
+                How many new barcodes?
+                <input
+                  type="number"
+                  min={1}
+                  max={500}
+                  value={newBarcodeCount}
+                  onChange={(e) => setNewBarcodeCount(e.target.value)}
+                />
+              </label>
+            </div>
+
+            {newBarcodeError && (
+              <p className="error-text">
+                <TriangleAlert size={14} /> {newBarcodeError}
+              </p>
+            )}
+
+            <div style={{ marginTop: 10 }}>
+              <button type="button" className="primary" disabled={newBarcodeGenerating} onClick={generateNewBarcodes}>
+                <Printer size={14} /> {newBarcodeGenerating ? "Generating..." : "Generate & Print"}
+              </button>
+            </div>
+
+            <h4 style={{ marginTop: 18 }}>Generated, not yet used ({unusedBarcodes.length})</h4>
+            <p className="help-text" style={{ marginTop: 0 }}>
+              Labels already printed but not yet attached to a product — scan one of these into the Barcode field
+              below instead of typing a new number.
+            </p>
+            <div className="barcode-gen-list">
+              {unusedBarcodes.map((b) => (
+                <div className="barcode-gen-row" key={b.id} style={{ gridTemplateColumns: "1fr auto auto" }}>
+                  <span className="barcode-gen-row-name">{b.code}</span>
+                  <span className="barcode-gen-row-meta">{new Date(b.createdAt).toLocaleDateString("en-IN")}</span>
+                  <button
+                    type="button"
+                    className="link-button"
+                    onClick={() => setPrintEntries([{ code: b.code, copies: 1 }])}
+                  >
+                    <Printer size={13} /> Print
+                  </button>
+                </div>
+              ))}
+              {unusedBarcodesLoaded && unusedBarcodes.length === 0 && (
+                <p className="muted small" style={{ padding: "12px" }}>
+                  No unused generated barcodes right now.
+                </p>
+              )}
+            </div>
+          </>
+        )}
+      </div>
 
       <form className="admin-form" onSubmit={handleSubmit}>
         <h3>
@@ -773,6 +951,99 @@ export function AdminProducts() {
         )}
       </div>
 
+      <div className="admin-form">
+        <div className="section-header">
+          <h3 style={{ marginBottom: 0 }}>
+            <ScanBarcode size={16} /> Barcode Generator
+          </h3>
+          <button type="button" className="link-button" onClick={() => setShowBarcodeGen((v) => !v)}>
+            {showBarcodeGen ? "Hide" : "Select products to print"}
+          </button>
+        </div>
+
+        {showBarcodeGen && (
+          <>
+            <p className="help-text">
+              Pick any existing products, set how many label copies each needs, then print — each label carries that
+              product's own barcode, generated fresh from the number already on file.
+            </p>
+
+            <div className="form-grid">
+              <label>
+                Search
+                <input
+                  placeholder="Search by name, SKU or barcode"
+                  value={barcodeGenSearch}
+                  onChange={(e) => setBarcodeGenSearch(e.target.value)}
+                />
+              </label>
+            </div>
+
+            <div className="barcode-gen-list">
+              {barcodeGenFiltered.map((p) => {
+                const selected = p.id in barcodeGenCopies;
+                return (
+                  <div className="barcode-gen-row" key={p.id}>
+                    <input
+                      type="checkbox"
+                      checked={selected}
+                      onChange={() => toggleBarcodeGenSelected(p.id)}
+                      aria-label={`Select ${p.name}`}
+                    />
+                    <div className="barcode-gen-row-info">
+                      <p className="barcode-gen-row-name">{p.name}</p>
+                      <p className="barcode-gen-row-meta">
+                        SKU {p.sku} · {p.barcode}
+                      </p>
+                    </div>
+                    <label className="muted small" style={{ display: selected ? "flex" : "none", alignItems: "center", gap: 6 }}>
+                      Copies
+                      <input
+                        type="number"
+                        min={1}
+                        className="qty-input barcode-gen-copies"
+                        value={barcodeGenCopies[p.id] ?? 1}
+                        onChange={(e) => setBarcodeGenCopiesFor(p.id, Number(e.target.value))}
+                      />
+                    </label>
+                  </div>
+                );
+              })}
+              {barcodeGenFiltered.length === 0 && (
+                <p className="muted small" style={{ padding: "12px" }}>
+                  No products match your search.
+                </p>
+              )}
+            </div>
+
+            <div style={{ display: "flex", gap: 18, alignItems: "center", flexWrap: "wrap", marginTop: 12 }}>
+              <label className="inline-checkbox">
+                <input
+                  type="checkbox"
+                  checked={barcodeGenShowName}
+                  onChange={(e) => setBarcodeGenShowName(e.target.checked)}
+                />
+                Show product name
+              </label>
+              <label className="inline-checkbox">
+                <input
+                  type="checkbox"
+                  checked={barcodeGenShowMrp}
+                  onChange={(e) => setBarcodeGenShowMrp(e.target.checked)}
+                />
+                Show MRP
+              </label>
+              <button type="button" className="primary" disabled={barcodeGenSelectedCount === 0} onClick={generateBarcodeLabels}>
+                <Printer size={14} />
+                {barcodeGenSelectedCount === 0
+                  ? "Generate & Print"
+                  : `Generate & Print (${barcodeGenTotalLabels} label${barcodeGenTotalLabels === 1 ? "" : "s"})`}
+              </button>
+            </div>
+          </>
+        )}
+      </div>
+
       <div className="section-header" style={{ marginBottom: 8 }}>
         <h3 style={{ marginBottom: 0 }}>Existing products</h3>
         <label className="inline-checkbox">
@@ -904,6 +1175,14 @@ export function AdminProducts() {
           ))}
         </tbody>
       </table>
+
+      <BarcodeLabelPrint
+        entries={printEntries}
+        onDone={() => {
+          setPrintEntries([]);
+          setBarcodeGenCopies({});
+        }}
+      />
     </div>
   );
 }
