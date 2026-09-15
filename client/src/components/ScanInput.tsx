@@ -1,8 +1,12 @@
-import { useEffect, useRef, useState } from "react";
+import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react";
 
 interface ScanInputProps {
   onScan: (code: string, source: "scanner" | "manual") => void;
   disabled?: boolean;
+}
+
+export interface ScanInputHandle {
+  focus: () => void;
 }
 
 // Hardware barcode scanners act as a keyboard and "type" the barcode
@@ -13,7 +17,7 @@ interface ScanInputProps {
 // the "source" label shown to the user.
 const FAST_KEY_THRESHOLD_MS = 40;
 
-export function ScanInput({ onScan, disabled }: ScanInputProps) {
+export const ScanInput = forwardRef<ScanInputHandle, ScanInputProps>(function ScanInput({ onScan, disabled }, ref) {
   const [value, setValue] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
   const lastKeyTime = useRef<number>(0);
@@ -22,6 +26,16 @@ export function ScanInput({ onScan, disabled }: ScanInputProps) {
   useEffect(() => {
     inputRef.current?.focus();
   }, []);
+
+  // Lets a parent (Billing) pull focus back onto the scan box on demand —
+  // e.g. right after "Add to cart" is clicked, so the very next scan doesn't
+  // land on nothing because focus is sitting on a button. Kept separate from
+  // the onBlur heuristic below, which deliberately does NOT steal focus back
+  // in the general case (it would yank focus away from the coupon box,
+  // customer search, etc. whenever the user is legitimately using them).
+  useImperativeHandle(ref, () => ({
+    focus: () => inputRef.current?.focus(),
+  }));
 
   function handleKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
     const now = performance.now();
@@ -75,4 +89,4 @@ export function ScanInput({ onScan, disabled }: ScanInputProps) {
       </button>
     </div>
   );
-}
+});
