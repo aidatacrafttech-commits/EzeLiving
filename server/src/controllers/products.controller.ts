@@ -1,4 +1,5 @@
 import type { Request, Response } from "express";
+import type { Prisma } from "@prisma/client";
 import { z } from "zod";
 import { prisma } from "../config/prisma";
 import { ApiError } from "../utils/ApiError";
@@ -6,6 +7,20 @@ import { asyncHandler } from "../utils/asyncHandler";
 import { recordAudit } from "../services/auditLog";
 
 const MAX_IMAGE_BYTES = 50 * 1024;
+
+// If this barcode was previously minted via the Barcode Generator pool
+// (still sitting there as 'unused'), mark it claimed by the product that
+// just took it. A barcode never has to come from the pool — a
+// manufacturer's own barcode just isn't found here, and that's fine, no-op.
+async function claimGeneratedBarcode(tx: Prisma.TransactionClient, barcode: string, productId: number): Promise<void> {
+  const pooled = await tx.generatedBarcode.findUnique({ where: { code: barcode } });
+  if (pooled && pooled.status === "unused") {
+    await tx.generatedBarcode.update({
+      where: { id: pooled.id },
+      data: { status: "assigned", assignedProductId: productId, assignedAt: new Date() },
+    });
+  }
+}
 
 // A data URI's decoded byte size is ~3/4 of its base64 payload length.
 function base64ByteSize(dataUri: string): number {
@@ -160,6 +175,8 @@ export const createProduct = asyncHandler(async (req: Request, res: Response) =>
       });
     }
 
+    await claimGeneratedBarcode(tx, created.barcode, created.id);
+
     await recordAudit(tx, {
       userId: actor.id,
       action: "PRODUCT_CREATED",
@@ -260,6 +277,8 @@ export const createProductsBulk = asyncHandler(async (req: Request, res: Respons
             })),
           });
         }
+
+        await claimGeneratedBarcode(tx, created.barcode, created.id);
 
         return created;
       });

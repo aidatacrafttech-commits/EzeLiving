@@ -80,6 +80,14 @@ export interface Product {
   stockByWarehouse?: StockByWarehouse[];
 }
 
+export interface GeneratedBarcode {
+  id: number;
+  code: string;
+  status: "unused" | "assigned";
+  createdAt: string;
+  assignedProduct?: { id: number; name: string; sku: string } | null;
+}
+
 export interface Customer {
   id: number;
   name: string;
