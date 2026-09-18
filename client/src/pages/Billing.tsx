@@ -41,6 +41,7 @@ export function Billing() {
 
   const scanInputRef = useRef<ScanInputHandle>(null);
   const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
+  const [warehouseLoadError, setWarehouseLoadError] = useState<string | null>(null);
   const [scannedProduct, setScannedProduct] = useState<Product | null>(null);
   const [lookupError, setLookupError] = useState<string | null>(null);
   const [showCamera, setShowCamera] = useState(false);
@@ -71,12 +72,15 @@ export function Billing() {
   const [transportChargeInput, setTransportChargeInput] = useState("");
 
   useEffect(() => {
-    api.get("/warehouses").then((res) => {
-      setWarehouses(res.data);
-      if (res.data.length > 0 && cart.warehouseId === null) {
-        cart.setWarehouseId(res.data[0].id);
-      }
-    });
+    api
+      .get("/warehouses")
+      .then((res) => {
+        setWarehouses(res.data);
+        if (res.data.length > 0 && cart.warehouseId === null) {
+          cart.setWarehouseId(res.data[0].id);
+        }
+      })
+      .catch((err) => setWarehouseLoadError(apiErrorMessage(err)));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -269,6 +273,12 @@ export function Billing() {
             </select>
           </label>
         </div>
+
+        {warehouseLoadError && (
+          <p className="error-text">
+            <TriangleAlert size={14} /> Could not load billing counters: {warehouseLoadError}
+          </p>
+        )}
 
         <ScanInput ref={scanInputRef} onScan={handleScan} />
 
