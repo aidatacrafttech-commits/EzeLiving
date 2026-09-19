@@ -5,6 +5,7 @@ import {
   getProductStock,
   listProducts,
   lookupByBarcode,
+  resolveProductCodes,
   updateProduct,
 } from "../controllers/products.controller";
 import { authenticate } from "../middleware/auth";
@@ -18,6 +19,7 @@ router.get("/:id/stock", authenticate, getProductStock);
 router.get("/", authenticate, listProducts);
 router.post("/", authenticate, createProduct);
 router.post("/bulk", authenticate, createProductsBulk);
+router.post("/resolve-codes", authenticate, resolveProductCodes);
 router.put("/:id", authenticate, updateProduct);
 
 export default router;

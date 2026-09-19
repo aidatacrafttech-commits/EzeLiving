@@ -123,6 +123,37 @@ export const listProducts = asyncHandler(async (req: Request, res: Response) => 
   res.json(products);
 });
 
+const resolveCodesSchema = z.object({
+  codes: z.array(z.string().trim().min(1)).min(1).max(1000),
+});
+
+// Matches each code (as typed in a restock spreadsheet) against an existing
+// product's barcode or SKU — used by the Purchases bulk-import flow, which
+// must only ever restock products that already exist, never create new
+// ones. `take: 100` on listProducts makes it unusable for this; codes can
+// come in any order or duplicate the same product, so lookup is by exact
+// code rather than pagination.
+export const resolveProductCodes = asyncHandler(async (req: Request, res: Response) => {
+  const { codes } = resolveCodesSchema.parse(req.body);
+  const uniqueCodes = [...new Set(codes)];
+
+  const products = await prisma.product.findMany({
+    where: {
+      isActive: true,
+      OR: [{ barcode: { in: uniqueCodes } }, { sku: { in: uniqueCodes } }],
+    },
+  });
+  const byBarcode = new Map(products.map((p) => [p.barcode, p]));
+  const bySku = new Map(products.map((p) => [p.sku, p]));
+
+  res.json({
+    results: codes.map((code) => ({
+      code,
+      product: byBarcode.get(code) ?? bySku.get(code) ?? null,
+    })),
+  });
+});
+
 const createProductSchema = z.object({
   name: z.string().min(1),
   sku: z.string().min(1),
