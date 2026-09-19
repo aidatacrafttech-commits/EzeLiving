@@ -4,6 +4,7 @@ import {
   CheckCircle2,
   ChevronDown,
   ChevronRight,
+  FileSpreadsheet,
   PackageSearch,
   Plus,
   RotateCcw,
@@ -13,6 +14,8 @@ import {
   X,
 } from "lucide-react";
 import { api, apiErrorMessage } from "../api/client";
+import { PurchaseImportPanel } from "../components/PurchaseImportPanel";
+import type { ResolvedRestockRow } from "../utils/purchaseImport";
 import type { DamagedStockRow, Product, Purchase, Supplier, SupplierReturn, Warehouse } from "../types";
 
 interface PurchaseLine {
@@ -48,6 +51,7 @@ export function AdminPurchases() {
   const [productSearch, setProductSearch] = useState("");
   const [productResults, setProductResults] = useState<Product[]>([]);
   const [lines, setLines] = useState<PurchaseLine[]>([]);
+  const [showPurchaseImport, setShowPurchaseImport] = useState(false);
 
   const [damagedStock, setDamagedStock] = useState<DamagedStockRow[]>([]);
   const [returnLines, setReturnLines] = useState<ReturnLine[]>([]);
@@ -123,6 +127,33 @@ export function AdminPurchases() {
     });
     setProductSearch("");
     setProductResults([]);
+  }
+
+  // Rows from PurchaseImportPanel — each already matched to an existing
+  // product and validated, so this just turns them into the same PurchaseLine
+  // shape addProductLine builds by hand, fully allocated to the warehouse
+  // chosen for the import. A product already on the list (added manually or
+  // by an earlier import) is left as-is, same dedupe rule as addProductLine.
+  function handleImportConfirm(importWarehouseId: number, rows: ResolvedRestockRow[]) {
+    setLines((prev) => {
+      const existingIds = new Set(prev.map((l) => l.product.id));
+      const imported: PurchaseLine[] = [];
+      for (const row of rows) {
+        if (!row.product || existingIds.has(row.product.id)) continue;
+        existingIds.add(row.product.id);
+        const qty = String(Number(row.quantity));
+        imported.push({
+          product: row.product,
+          totalQty: qty,
+          damagedQty: String(Number(row.damagedQty) || 0),
+          costPrice: row.costPrice,
+          allocations: { [importWarehouseId]: qty },
+          autoFilled: false,
+        });
+      }
+      return [...prev, ...imported];
+    });
+    setShowPurchaseImport(false);
   }
 
   function updateLine(productId: number, patch: Partial<PurchaseLine>) {
@@ -334,15 +365,31 @@ export function AdminPurchases() {
 
           {supplierPicker}
 
-          <h4 style={{ marginTop: 18 }}>
-            <PackageSearch size={15} /> Add products
-          </h4>
+          <div className="section-header">
+            <h4 style={{ marginTop: 18, marginBottom: 0 }}>
+              <PackageSearch size={15} /> Add products
+            </h4>
+            {!showPurchaseImport && (
+              <button type="button" className="link-button" onClick={() => setShowPurchaseImport(true)}>
+                <FileSpreadsheet size={14} /> Restock from Excel/CSV
+              </button>
+            )}
+          </div>
           <p className="help-text">
             <strong>Total received (good)</strong> is what goes into normal/sellable stock — unchanged from before.
             If some units arrived already damaged from the supplier, add them separately under{" "}
             <strong>Damaged (transit)</strong> — they're recorded straight into Damaged Products and never touch
             sellable stock.
           </p>
+
+          {showPurchaseImport && (
+            <PurchaseImportPanel
+              warehouses={warehouses}
+              onConfirm={handleImportConfirm}
+              onClose={() => setShowPurchaseImport(false)}
+            />
+          )}
+
           <input
             placeholder="Search product by name / SKU / barcode"
             value={productSearch}
