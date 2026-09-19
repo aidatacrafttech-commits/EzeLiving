@@ -204,6 +204,15 @@ const markDamagedSchema = z.object({
   productId: z.number().int(),
   warehouseId: z.number().int(),
   qty: z.number().int().positive(),
+  // "transit" is for stock that was already receipted as sellable (the
+  // transit damage went unnoticed at the time) and is only now discovered to
+  // have arrived damaged from the supplier — distinct from the normal path
+  // (Purchases form, "Damaged (transit)") where it's caught at receiving and
+  // never enters sellable stock at all. Either way it still has to come out
+  // of the sellable pool now, so it's the same stock move as showroom
+  // damage — only the source tag (and therefore the reporting split in
+  // listDamagedStock) differs.
+  source: z.enum(["showroom", "transit"]).default("showroom"),
 });
 
 export const markDamaged = asyncHandler(async (req: Request, res: Response) => {
@@ -226,15 +235,18 @@ export const markDamaged = asyncHandler(async (req: Request, res: Response) => {
     const previousQty = existing.quantity;
     const newQty = existing.quantity - data.qty;
     const newDamagedQty = existing.damagedQuantity + data.qty;
+    const newDamagedQtyTransit =
+      existing.damagedQuantityTransit + (data.source === "transit" ? data.qty : 0);
 
     const stock = await tx.stock.update({
       where: { id: existing.id },
-      data: { quantity: newQty, damagedQuantity: newDamagedQty },
+      data: { quantity: newQty, damagedQuantity: newDamagedQty, damagedQuantityTransit: newDamagedQtyTransit },
     });
 
     // Moving units out of the sellable pool is logged the same way a manual
     // adjustment would be; the damaged-side of the move is fully captured by
-    // Stock.damagedQuantity itself (and later by a SupplierReturn if sent back).
+    // Stock.damagedQuantity/damagedQuantityTransit (and later by a
+    // SupplierReturn if sent back).
     await tx.stockLedger.create({
       data: {
         productId: data.productId,
@@ -244,7 +256,7 @@ export const markDamaged = asyncHandler(async (req: Request, res: Response) => {
         balanceQty: newQty,
         referenceType: "adjustment",
         performedById: actor.id,
-        reason: "Marked damaged",
+        reason: data.source === "transit" ? "Marked damaged (transit)" : "Marked damaged",
       },
     });
 
@@ -260,7 +272,7 @@ export const markDamaged = asyncHandler(async (req: Request, res: Response) => {
         qty: data.qty,
         previousQty,
         newQty,
-        damageSource: "showroom",
+        damageSource: data.source,
       },
     });
 
