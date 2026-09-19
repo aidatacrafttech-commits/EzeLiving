@@ -130,6 +130,7 @@ export function AdminProducts() {
   // can be printed and stuck on stock ahead of the data entry.
   const [showNewBarcodeGen, setShowNewBarcodeGen] = useState(false);
   const [newBarcodeCount, setNewBarcodeCount] = useState("10");
+  const [newBarcodeMaterial, setNewBarcodeMaterial] = useState<"MB" | "GL" | "OT" | "">("");
   const [newBarcodeGenerating, setNewBarcodeGenerating] = useState(false);
   const [newBarcodeError, setNewBarcodeError] = useState<string | null>(null);
   const [unusedBarcodes, setUnusedBarcodes] = useState<GeneratedBarcode[]>([]);
@@ -496,7 +497,10 @@ export function AdminProducts() {
     setNewBarcodeError(null);
     setNewBarcodeGenerating(true);
     try {
-      const res = await api.post<{ codes: string[] }>("/barcodes/generate", { count });
+      const res = await api.post<{ codes: string[] }>("/barcodes/generate", {
+        count,
+        ...(newBarcodeMaterial ? { material: newBarcodeMaterial } : {}),
+      });
       setPrintEntries(res.data.codes.map((code) => ({ code, copies: 1 })));
       loadUnusedBarcodes();
     } catch (err) {
@@ -565,6 +569,31 @@ export function AdminProducts() {
                   value={newBarcodeCount}
                   onChange={(e) => setNewBarcodeCount(e.target.value)}
                 />
+              </label>
+            </div>
+
+            <div className="form-grid">
+              <label>
+                Material
+                <div className="material-toggle-group">
+                  {(
+                    [
+                      { value: "", label: "None" },
+                      { value: "MB", label: "Marble (MB)" },
+                      { value: "GL", label: "Glass (GL)" },
+                      { value: "OT", label: "Others (OT)" },
+                    ] as const
+                  ).map((opt) => (
+                    <button
+                      key={opt.value}
+                      type="button"
+                      className={`material-toggle-btn${newBarcodeMaterial === opt.value ? " active" : ""}`}
+                      onClick={() => setNewBarcodeMaterial(opt.value)}
+                    >
+                      {opt.label}
+                    </button>
+                  ))}
+                </div>
               </label>
             </div>
 

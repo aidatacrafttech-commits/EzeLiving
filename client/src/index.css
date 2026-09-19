@@ -2261,6 +2261,35 @@ button.link-button.danger-link:hover {
   color: var(--muted);
 }
 
+.material-toggle-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.material-toggle-btn {
+  padding: 6px 14px;
+  border-radius: 999px;
+  border: 1px solid var(--border-soft);
+  background: var(--surface);
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s, background 0.15s;
+}
+
+.material-toggle-btn:hover {
+  border-color: var(--brand-300);
+}
+
+.material-toggle-btn.active {
+  background: var(--brand-500);
+  border-color: var(--brand-500);
+  color: #fff;
+}
+
 .barcode-gen-copies {
   width: 60px;
 }
