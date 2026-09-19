@@ -8,6 +8,7 @@ const MAX_BATCH = 500;
 
 const generateSchema = z.object({
   count: z.number().int().min(1).max(MAX_BATCH),
+  material: z.enum(["MB", "GL", "OT"]).optional(),
 });
 
 // Mints `count` brand-new, guaranteed-unique barcode numbers up front — no
@@ -17,14 +18,14 @@ const generateSchema = z.object({
 // one at a time inside a single transaction, same pattern as every other
 // document-number counter in this app.
 export const generateBarcodes = asyncHandler(async (req: Request, res: Response) => {
-  const { count } = generateSchema.parse(req.body);
+  const { count, material } = generateSchema.parse(req.body);
   const actor = req.user!;
 
   const codes = await prisma.$transaction(
     async (tx) => {
       const created: string[] = [];
       for (let i = 0; i < count; i++) {
-        const code = await generateBarcodeNumber(tx);
+        const code = await generateBarcodeNumber(tx, material);
         await tx.generatedBarcode.create({
           data: { code, createdById: actor.id },
         });
