@@ -11,7 +11,7 @@ export function AdminStockAdjust() {
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [stock, setStock] = useState<StockByWarehouse[]>([]);
 
-  const [mode, setMode] = useState<"adjust" | "transfer" | "damage">("adjust");
+  const [mode, setMode] = useState<"adjust" | "transfer" | "damage" | "damage-transit">("adjust");
 
   const [warehouseId, setWarehouseId] = useState<number | "">("");
   const [changeQty, setChangeQty] = useState("");
@@ -123,6 +123,7 @@ export function AdminStockAdjust() {
 
   async function handleMarkDamaged() {
     if (!selectedProduct || !damageWarehouseId || !damageQty) return;
+    const source = mode === "damage-transit" ? "transit" : "showroom";
     setSubmitting(true);
     setError(null);
     setMessage(null);
@@ -131,6 +132,7 @@ export function AdminStockAdjust() {
         productId: selectedProduct.id,
         warehouseId: damageWarehouseId,
         qty: Number(damageQty),
+        source,
       });
       setMessage("Marked as damaged — moved out of sellable stock. Send it back from Purchases → Return to Supplier.");
       setDamageQty("");
@@ -216,6 +218,13 @@ export function AdminStockAdjust() {
             <button type="button" className={mode === "damage" ? "active" : ""} onClick={() => setMode("damage")}>
               Mark Damaged (Showroom)
             </button>
+            <button
+              type="button"
+              className={mode === "damage-transit" ? "active" : ""}
+              onClick={() => setMode("damage-transit")}
+            >
+              Mark Damaged (Transit)
+            </button>
           </div>
 
           {mode === "adjust" ? (
@@ -295,22 +304,36 @@ export function AdminStockAdjust() {
             </div>
           ) : (
             <div>
-              <p className="help-text">
-                <PackageX size={14} /> Use this for <strong>Damage on Showroom</strong> — a broken/defective piece
-                found in your own stock after it reached the showroom (handling, display, accident — not a customer
-                return, and not damage found while receiving a purchase). It moves units from{" "}
-                <strong>sellable</strong> stock into the damaged holding area — they can no longer be sold. For
-                units damaged in transit from a supplier, record them directly on the{" "}
-                <Link to="/admin/purchases" className="inline-link">
-                  Purchases
-                </Link>{" "}
-                form instead, under "Damaged (transit)" — they should never enter sellable stock in the first place.
-                To send any damaged stock back to a supplier, go to{" "}
-                <Link to="/admin/purchases" className="inline-link">
-                  Purchases → Return to Supplier
-                </Link>
-                .
-              </p>
+              {mode === "damage" ? (
+                <p className="help-text">
+                  <PackageX size={14} /> Use this for <strong>Damage on Showroom</strong> — a broken/defective piece
+                  found in your own stock after it reached the showroom (handling, display, accident — not a customer
+                  return, and not damage found while receiving a purchase). It moves units from{" "}
+                  <strong>sellable</strong> stock into the damaged holding area — they can no longer be sold. For
+                  units damaged in transit from a supplier and caught at receiving, record them directly on the{" "}
+                  <Link to="/admin/purchases" className="inline-link">
+                    Purchases
+                  </Link>{" "}
+                  form instead, under "Damaged (transit)" — they should never enter sellable stock in the first
+                  place. To send any damaged stock back to a supplier, go to{" "}
+                  <Link to="/admin/purchases" className="inline-link">
+                    Purchases → Return to Supplier
+                  </Link>
+                  .
+                </p>
+              ) : (
+                <p className="help-text">
+                  <PackageX size={14} /> Use this for <strong>Damage on Transit, found late</strong> — stock that was
+                  already receipted as sellable, and only now turns out to have arrived damaged from the supplier
+                  (missed at receiving time). It moves units out of <strong>sellable</strong> stock the same way
+                  Showroom damage does, but tags them as transit damage so they're reported separately. If you're
+                  still receiving the purchase right now, use the{" "}
+                  <Link to="/admin/purchases" className="inline-link">
+                    Purchases
+                  </Link>{" "}
+                  form's "Damaged (transit)" field instead — those units never need to touch sellable stock at all.
+                </p>
+              )}
               <div className="form-grid">
                 <label>
                   Warehouse
